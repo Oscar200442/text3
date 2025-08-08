@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Google Cloud TTS</title>
+    <title>Text-to-Speech with File Utility</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
@@ -11,26 +11,257 @@
             font-family: 'Inter', sans-serif;
         }
     </style>
+    <!-- Libraries for EPUB parsing and PDF generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
     <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-lg">
-        <h1 class="text-3xl font-bold mb-6 text-center text-gray-800">Text-to-Speech with Google Cloud</h1>
+        <h1 class="text-3xl font-bold mb-6 text-center text-gray-800">Text-to-Speech with File Utility</h1>
+        
+        <!-- Action buttons row -->
+        <div class="flex flex-col sm:flex-row items-center justify-between gap-4 mb-4">
+            <button id="speak-button" class="w-full sm:w-auto px-6 py-3 bg-blue-600 text-white font-bold rounded-lg shadow-md hover:bg-blue-700 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                <i class="fas fa-volume-up mr-2"></i> Speak
+            </button>
+            <button id="importEpubBtn"
+                class="w-full sm:w-auto px-6 py-3 bg-purple-600 text-white font-bold rounded-lg shadow-md hover:bg-purple-700 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2"
+            >
+                <i class="fas fa-file-import mr-2"></i> Import EPUB
+            </button>
+            <button id="downloadPdfBtn"
+                class="w-full sm:w-auto px-6 py-3 bg-red-600 text-white font-bold rounded-lg shadow-md hover:bg-red-700 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                disabled
+            >
+                <i class="fas fa-file-pdf mr-2"></i> Download PDF
+            </button>
+        </div>
+
+        <input type="file" id="epubFileInput" class="hidden" accept=".epub">
+
+        <!-- Status and loading indicators -->
+        <div id="loading-indicator" class="hidden text-blue-600 font-medium text-center mb-2">
+            Generating audio...
+        </div>
+        <div id="file-loading-message" class="hidden text-center text-sm text-gray-500 mb-2">Processing file...</div>
+
+        <!-- Text input area -->
         <div class="mb-4">
             <label for="text-input" class="block text-gray-700 font-medium mb-2">Enter your text:</label>
             <textarea id="text-input" rows="6" class="w-full p-3 rounded-lg border-2 border-gray-300 focus:outline-none focus:border-blue-500 transition-colors duration-200" placeholder="Hello, I am a new voice..."></textarea>
         </div>
-        <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <button id="speak-button" class="w-full sm:w-auto px-6 py-3 bg-blue-600 text-white font-bold rounded-lg shadow-md hover:bg-blue-700 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
-                Speak
-            </button>
-            <div id="loading-indicator" class="hidden text-blue-600 font-medium">
-                Generating audio...
-            </div>
+        
+        <!-- Audio player -->
+        <div class="mt-4">
+            <audio id="audio-player" controls class="w-full hidden"></audio>
         </div>
-        <div id="message-box" class="mt-4 text-red-500 text-sm font-medium"></div>
+
+        <!-- Message box for user feedback -->
+        <div id="message-box" class="mt-4 p-4 rounded-lg text-sm text-center font-medium transition-colors hidden"></div>
     </div>
-    <!-- The script.js file would be included here -->
-    <!-- However, for this example, the JS is provided in a separate block -->
-    <script src="script.js"></script>
+
+    <script>
+        // DOM elements for TTS
+        const textInput = document.getElementById('text-input');
+        const speakButton = document.getElementById('speak-button');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        const audioPlayer = document.getElementById('audio-player');
+        
+        // DOM elements for EPUB/PDF
+        const epubFileInput = document.getElementById('epubFileInput');
+        const importEpubBtn = document.getElementById('importEpubBtn');
+        const downloadPdfBtn = document.getElementById('downloadPdfBtn');
+        const fileLoadingMessage = document.getElementById('file-loading-message');
+        const messageBox = document.getElementById('message-box');
+        let lastFileName = "extracted_text.pdf";
+
+        // Helper functions for audio processing
+        function base64ToArrayBuffer(base64) {
+            const binaryString = atob(base64);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        // Function to display messages to the user
+        function showMessage(text, isError = false) {
+            messageBox.textContent = text;
+            messageBox.classList.remove('hidden', 'bg-red-100', 'text-red-800', 'bg-green-100', 'text-green-800');
+            if (isError) {
+                messageBox.classList.add('bg-red-100', 'text-red-800');
+            } else {
+                messageBox.classList.add('bg-green-100', 'text-green-800');
+            }
+            messageBox.classList.remove('hidden');
+        }
+        
+        // Speak button click handler
+        speakButton.addEventListener('click', async () => {
+            const text = textInput.value.trim();
+            if (text === '') {
+                showMessage('Please enter some text to convert to speech.', true);
+                return;
+            }
+            
+            // Show loading indicator and disable buttons
+            loadingIndicator.classList.remove('hidden');
+            speakButton.disabled = true;
+            audioPlayer.classList.add('hidden');
+            messageBox.classList.add('hidden');
+
+            try {
+                const response = await fetch('/api/tts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: text })
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Server error: ${response.status} ${response.statusText}. Response body: ${errorText}`);
+                }
+
+                const result = await response.json();
+                const audioData = result.audioContent;
+                
+                if (audioData) {
+                    const audioUrl = 'data:audio/wav;base64,' + audioData;
+                    
+                    audioPlayer.src = audioUrl;
+                    audioPlayer.classList.remove('hidden');
+                    audioPlayer.play();
+
+                    showMessage('Audio generated and playing successfully!', false);
+                } else {
+                    throw new Error('No audio data received from server.');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showMessage(`Error: ${error.message}`, true);
+            } finally {
+                // Hide loading indicator and re-enable button
+                loadingIndicator.classList.add('hidden');
+                speakButton.disabled = false;
+            }
+        });
+
+        // Event listeners for EPUB import
+        importEpubBtn.addEventListener('click', () => {
+            epubFileInput.click();
+        });
+
+        epubFileInput.addEventListener('change', async (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            fileLoadingMessage.classList.remove('hidden');
+            downloadPdfBtn.disabled = true;
+            textInput.value = "Processing EPUB file...";
+            messageBox.classList.add('hidden');
+
+            try {
+                const fileReader = new FileReader();
+                fileReader.onload = async function(event) {
+                    try {
+                        const epubData = event.target.result;
+                        const zip = await JSZip.loadAsync(epubData);
+                        let textContent = '';
+
+                        const parser = new DOMParser();
+                        const containerXml = await zip.file('META-INF/container.xml').async('string');
+                        const containerDoc = parser.parseFromString(containerXml, 'application/xml');
+                        const opfPath = containerDoc.querySelector('rootfile').getAttribute('full-path');
+
+                        const opfXml = await zip.file(opfPath).async('string');
+                        const opfDoc = parser.parseFromString(opfXml, 'application/xml');
+
+                        const spine = opfDoc.querySelector('spine');
+                        const manifest = opfDoc.querySelector('manifest');
+
+                        const chapterPromises = Array.from(spine.children).map(async (itemRef) => {
+                            const idref = itemRef.getAttribute('idref');
+                            const manifestItem = manifest.querySelector(`item[id="${idref}"]`);
+                            const href = manifestItem.getAttribute('href');
+
+                            const opfDir = opfPath.substring(0, opfPath.lastIndexOf('/') + 1);
+                            const chapterPath = opfDir + href;
+                            const chapterFile = zip.file(chapterPath);
+
+                            if (chapterFile) {
+                                const chapterContent = await chapterFile.async('string');
+                                const chapterDoc = parser.parseFromString(chapterContent, 'application/xhtml+xml');
+                                return chapterDoc.body.textContent || '';
+                            }
+                            return '';
+                        });
+
+                        const textChunks = await Promise.all(chapterPromises);
+                        textContent = textChunks.join('\n\n').trim();
+
+                        if (textContent) {
+                            textInput.value = textContent;
+                            downloadPdfBtn.disabled = false;
+                            lastFileName = file.name.replace('.epub', '.pdf');
+                            showMessage("EPUB text extracted successfully!", false);
+                        } else {
+                            textInput.value = "Could not extract text from EPUB.";
+                            showMessage("Failed to extract text from EPUB.", true);
+                        }
+                    } catch (error) {
+                        console.error('Extraction error:', error);
+                        textInput.value = 'Failed to process EPUB file. Please check the file format.';
+                        showMessage('Failed to process EPUB file. Please check the file format.', true);
+                    } finally {
+                        fileLoadingMessage.classList.add('hidden');
+                    }
+                };
+                fileReader.readAsArrayBuffer(file);
+            } catch (error) {
+                console.error('File reading error:', error);
+                textInput.value = 'An error occurred while reading the file.';
+                fileLoadingMessage.classList.add('hidden');
+                showMessage('An error occurred while reading the file.', true);
+            }
+        });
+
+        // Download PDF button click handler
+        downloadPdfBtn.addEventListener('click', () => {
+            if (textInput.value) {
+                createAndDownloadPDF(textInput.value, lastFileName);
+                showMessage("PDF downloaded successfully!", false);
+            } else {
+                showMessage("Please import an EPUB file first.", true);
+            }
+        });
+
+        // Function to create and download a PDF
+        function createAndDownloadPDF(text, filename) {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const pageHeight = doc.internal.pageSize.getHeight();
+            const margin = 10;
+            const lineHeight = 7;
+            
+            const lines = doc.splitTextToSize(text, pageWidth - margin * 2);
+            let y = margin;
+
+            doc.setFontSize(12);
+
+            lines.forEach((line) => {
+                if (y + lineHeight > pageHeight - margin) {
+                    doc.addPage();
+                    y = margin;
+                }
+                doc.text(line, margin, y);
+                y += lineHeight;
+            });
+            doc.save(filename);
+        }
+    </script>
 </body>
 </html>
