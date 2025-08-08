@@ -91,6 +91,22 @@
             }
         }
         
+        // Function to convert a base64 string to a Uint8Array, handling URL-safe characters and padding
+        function base64ToUint8Array(base64String) {
+            const padding = '='.repeat((4 - base64String.length % 4) % 4);
+            const base64 = (base64String + padding)
+                .replace(/-/g, '+')
+                .replace(/_/g, '/');
+
+            const rawData = window.atob(base64);
+            const outputArray = new Uint8Array(rawData.length);
+
+            for (let i = 0; i < rawData.length; ++i) {
+                outputArray[i] = rawData.charCodeAt(i);
+            }
+            return outputArray;
+        }
+
         // Generate and Play button click handler
         generateAndPlayBtn.addEventListener('click', async () => {
             const text = textInput.value.trim();
@@ -120,13 +136,8 @@
 
                 const result = await response.json();
                 
-                // Decode the base64 audio content
-                const audioData = atob(result.audioContent);
-                const arrayBuffer = new ArrayBuffer(audioData.length);
-                const uint8Array = new Uint8Array(arrayBuffer);
-                for (let i = 0; i < audioData.length; i++) {
-                    uint8Array[i] = audioData.charCodeAt(i);
-                }
+                // Use the new, more robust function to decode the base64 audio content
+                const uint8Array = base64ToUint8Array(result.audioContent);
                 
                 // Create a Blob and URL for the audio element
                 const audioBlob = new Blob([uint8Array], { type: 'audio/mpeg' });
