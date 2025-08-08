@@ -30,8 +30,8 @@ export default async function handler(request, response) {
       },
       voice: {
         languageCode: 'en-US',
-        // This is a high-quality Wavenet voice. You can change this to a different voice if you prefer.
-        name: 'en-US-Chirp-HD-F',
+        // This is a high-quality Studio voice for a more natural and fluent tone.
+        name: 'en-US-Studio-F',
         ssmlGender: 'FEMALE'
       },
       audioConfig: {
