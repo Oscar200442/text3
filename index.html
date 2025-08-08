@@ -184,14 +184,38 @@
                     },
                     model: "gemini-2.5-flash-preview-tts"
                 };
+                // The API key is automatically provided by the Canvas environment when this variable is an empty string
                 const apiKey = "";
                 const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
 
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
+                let response;
+                // Add exponential backoff for API calls
+                const maxRetries = 3;
+                let retryCount = 0;
+                let delay = 1000; // 1 second
+
+                while (retryCount < maxRetries) {
+                    try {
+                        response = await fetch(apiUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+
+                        if (response.status !== 429) { // 429 is Too Many Requests, which we handle with backoff
+                            break;
+                        }
+
+                        // Exponential backoff
+                        console.warn(`API call failed with status 429. Retrying in ${delay}ms...`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        delay *= 2;
+                        retryCount++;
+                    } catch (fetchError) {
+                        console.error('Fetch attempt failed:', fetchError);
+                        throw fetchError;
+                    }
+                }
                 
                 // Check if the API call was successful
                 if (!response.ok) {
