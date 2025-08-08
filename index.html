@@ -193,6 +193,12 @@
                     body: JSON.stringify(payload)
                 });
                 
+                // Check if the API call was successful
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`API call failed with status: ${response.status} ${response.statusText}. Response body: ${errorText}`);
+                }
+
                 const result = await response.json();
                 
                 const part = result?.candidates?.[0]?.content?.parts?.[0];
