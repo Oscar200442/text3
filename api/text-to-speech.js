@@ -30,8 +30,9 @@ export default async function handler(request, response) {
       },
       voice: {
         languageCode: 'en-US',
-        // This is a high-quality Studio voice for a more natural and fluent tone.
-        name: 'en-US-Studio-F',
+        // This is a high-quality Wavenet voice, which is a known valid option.
+        // It provides a much more natural and fluent tone than standard voices.
+        name: 'en-US-Wavenet-F',
         ssmlGender: 'FEMALE'
       },
       audioConfig: {
