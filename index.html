@@ -169,7 +169,8 @@
             messageBox.classList.add('hidden');
 
             try {
-                // The API endpoint for generating TTS
+                // The API endpoint for generating TTS. The API key is not included in the URL here
+                // as the Canvas environment will handle authentication automatically.
                 const payload = {
                     contents: [{
                         parts: [{ text: text }]
@@ -184,9 +185,8 @@
                     },
                     model: "gemini-2.5-flash-preview-tts"
                 };
-                // The API key is automatically provided by the Canvas environment when this variable is an empty string
                 const apiKey = "";
-                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent`;
 
                 let response;
                 // Add exponential backoff for API calls
