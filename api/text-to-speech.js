@@ -31,7 +31,7 @@ export default async function handler(request, response) {
       voice: {
         languageCode: 'en-US',
         // This is a high-quality Wavenet voice. You can change this to a different voice if you prefer.
-        name: 'en-US-Wavenet-F',
+        name: 'en-US-Chirp-HD-F',
         ssmlGender: 'FEMALE'
       },
       audioConfig: {
