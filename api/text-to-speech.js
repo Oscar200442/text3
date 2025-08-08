@@ -24,7 +24,7 @@
         
         <!-- Text input area -->
         <textarea id="textInput"
-            class="w-full h-32 p-4 mb-4 text-gray-700 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+            class="w-full h-32 p-4 mb-4 text-gray-700 bg-gray-500 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
             placeholder="Enter the text you want to convert to speech..."
         ></textarea>
 
@@ -91,22 +91,6 @@
             }
         }
         
-        // Function to convert a base64 string to a Uint8Array, handling URL-safe characters and padding
-        function base64ToUint8Array(base64String) {
-            const padding = '='.repeat((4 - base64String.length % 4) % 4);
-            const base64 = (base64String + padding)
-                .replace(/-/g, '+')
-                .replace(/_/g, '/');
-
-            const rawData = window.atob(base64);
-            const outputArray = new Uint8Array(rawData.length);
-
-            for (let i = 0; i < rawData.length; ++i) {
-                outputArray[i] = rawData.charCodeAt(i);
-            }
-            return outputArray;
-        }
-
         // Generate and Play button click handler
         generateAndPlayBtn.addEventListener('click', async () => {
             const text = textInput.value.trim();
@@ -136,26 +120,22 @@
 
                 const result = await response.json();
                 
-                // Use the more robust function to decode the base64 audio content
-                const uint8Array = base64ToUint8Array(result.audioContent);
-                
-                // Create a Blob and URL for the audio element
-                const audioBlob = new Blob([uint8Array], { type: 'audio/mpeg' });
+                // Directly create a Blob from the base64 string to avoid decoding issues
+                const audioBlob = new Blob([Uint8Array.from(atob(result.audioContent), c => c.charCodeAt(0))], { type: 'audio/mpeg' });
                 const audioUrl = URL.createObjectURL(audioBlob);
 
-                // Set the audio source
+                // Set the audio source and play
                 audio.src = audioUrl;
 
                 // Wait for audio metadata to load before playing
                 audio.addEventListener('loadedmetadata', () => {
-                    // Set the total time and max value of the slider here for accuracy
                     const duration = audio.duration;
                     if (!isNaN(duration)) {
                         totalTimeSpan.textContent = formatTime(duration);
                         progressSlider.max = duration; // Set slider max to duration in seconds
                     }
                     audio.play();
-                });
+                }, { once: true }); // Use { once: true } to prevent multiple event listeners
 
                 // Clear message box and enable controls
                 messageBox.classList.add('hidden');
