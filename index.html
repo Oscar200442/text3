@@ -171,8 +171,8 @@
             try {
                 // Using the Google Cloud Text-to-Speech API as requested
                 // Note: The `apiKey` will be provided by the Canvas environment automatically.
-                const apiKey = "";
-                const apiUrl = `https://texttospeech.googleapis.com/v1/text:synthesize?key=${apiKey}`;
+                const GOOGLE_TTS_API_KEY = "";
+                const apiUrl = `https://texttospeech.googleapis.com/v1/text:synthesize?key=${GOOGLE_TTS_API_KEY}`;
 
                 const payload = {
                     input: {
