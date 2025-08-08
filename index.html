@@ -48,74 +48,109 @@
             class="w-full h-32 p-4 mb-4 text-gray-700 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
             placeholder="Enter the text or import an EPUB file to convert to speech..."
         ></textarea>
-
+        
         <!-- TTS Control buttons -->
-        <div class="flex justify-center items-center space-x-4 mb-4">
+        <div class="flex flex-col items-center space-y-4">
             <button id="generateAndPlayBtn"
-                class="px-6 py-2 bg-blue-600 text-white font-medium rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-transform transform hover:scale-105 active:scale-100"
+                class="px-6 py-2 w-full bg-blue-600 text-white font-medium rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-transform transform hover:scale-105 active:scale-100"
             >
-                Generate & Play
+                <i class="fas fa-play-circle mr-2"></i> Generate & Play Audio
             </button>
-            <button id="pauseBtn"
-                class="px-6 py-2 bg-yellow-500 text-white font-medium rounded-lg shadow-md hover:bg-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 transition-transform transform hover:scale-105 active:scale-100"
-                disabled
-            >
-                Pause
-            </button>
-            <button id="playBtn"
-                class="px-6 py-2 bg-green-600 text-white font-medium rounded-lg shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-transform transform hover:scale-105 active:scale-100"
-                disabled
-            >
-                Play
-            </button>
-        </div>
-
-        <!-- Progress slider and time display -->
-        <div class="flex items-center space-x-4 mt-4">
-            <span id="currentTime" class="text-gray-600 text-sm w-12 text-right">0:00</span>
-            <input type="range" id="progressSlider" value="0" min="0" max="100" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
-            <span id="totalTime" class="text-gray-600 text-sm w-12">0:00</span>
+            <audio id="audioPlayer" controls class="w-full mt-4 hidden"></audio>
+            <div id="ttsLoadingMessage" class="flex items-center space-x-2 mt-4 hidden">
+                <svg class="animate-spin h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span class="text-gray-600">Generating audio...</span>
+            </div>
         </div>
 
         <!-- Status/Error message box -->
         <div id="messageBox" class="mt-4 p-4 rounded-lg text-sm text-center font-medium transition-colors hidden"></div>
-        
     </div>
 
     <script>
         // DOM elements for TTS
         const textInput = document.getElementById('textInput');
         const generateAndPlayBtn = document.getElementById('generateAndPlayBtn');
-        const pauseBtn = document.getElementById('pauseBtn');
-        const playBtn = document.getElementById('playBtn');
-        const progressSlider = document.getElementById('progressSlider');
-        const currentTimeSpan = document.getElementById('currentTime');
-        const totalTimeSpan = document.getElementById('totalTime');
-        const messageBox = document.getElementById('messageBox');
-        let audio = new Audio();
+        const audioPlayer = document.getElementById('audioPlayer');
+        const ttsLoadingMessage = document.getElementById('ttsLoadingMessage');
         
         // DOM elements for EPUB/PDF
         const epubFileInput = document.getElementById('epubFileInput');
         const importEpubBtn = document.getElementById('importEpubBtn');
         const downloadPdfBtn = document.getElementById('downloadPdfBtn');
         const loadingMessage = document.getElementById('loadingMessage');
+        const messageBox = document.getElementById('messageBox');
         let lastFileName = "extracted_text.pdf";
 
-        // Helper function to format time
-        function formatTime(seconds) {
-            const minutes = Math.floor(seconds / 60);
-            const remainingSeconds = Math.floor(seconds % 60);
-            return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+        // Helper functions for audio processing
+        function base64ToArrayBuffer(base64) {
+            const binaryString = atob(base64);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        function pcmToWav(pcm16, sampleRate) {
+            const dataLength = pcm16.length * 2;
+            const buffer = new ArrayBuffer(44 + dataLength);
+            const view = new DataView(buffer);
+
+            // RIFF identifier
+            writeString(view, 0, 'RIFF');
+            // file length
+            view.setUint32(4, 36 + dataLength, true);
+            // RIFF type
+            writeString(view, 8, 'WAVE');
+            // format chunk identifier
+            writeString(view, 12, 'fmt ');
+            // format chunk length
+            view.setUint32(16, 16, true);
+            // sample format (1 = PCM)
+            view.setUint16(20, 1, true);
+            // channel count
+            view.setUint16(22, 1, true);
+            // sample rate
+            view.setUint32(24, sampleRate, true);
+            // byte rate (sample rate * block align)
+            view.setUint32(28, sampleRate * 2, true);
+            // block align (channels * bytes per sample)
+            view.setUint16(32, 2, true);
+            // bits per sample
+            view.setUint16(34, 16, true);
+            // data chunk identifier
+            writeString(view, 36, 'data');
+            // data chunk length
+            view.setUint32(40, dataLength, true);
+
+            // Write the PCM data
+            let offset = 44;
+            for (let i = 0; i < pcm16.length; i++, offset += 2) {
+                view.setInt16(offset, pcm16[i], true);
+            }
+
+            return new Blob([view], { type: 'audio/wav' });
+        }
+
+        function writeString(view, offset, string) {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
+            }
         }
         
         // Function to display messages to the user
         function showMessage(text, isError = false) {
             messageBox.textContent = text;
-            messageBox.classList.remove('hidden', 'bg-red-100', 'text-red-800', 'bg-blue-100', 'text-blue-800');
+            messageBox.classList.remove('hidden', 'bg-red-100', 'text-red-800', 'bg-green-100', 'text-green-800');
             if (isError) {
                 messageBox.classList.add('bg-red-100', 'text-red-800');
             } else {
-                messageBox.classList.add('bg-blue-100', 'text-blue-800');
+                messageBox.classList.add('bg-green-100', 'text-green-800');
             }
         }
         
@@ -127,11 +162,11 @@
                 return;
             }
             
-            // Show loading message and disable buttons
-            showMessage('Generating speech...', false);
+            // Show loading indicator and disable buttons
+            ttsLoadingMessage.classList.remove('hidden');
             generateAndPlayBtn.disabled = true;
-            pauseBtn.disabled = true;
-            playBtn.disabled = true;
+            audioPlayer.classList.add('hidden');
+            messageBox.classList.add('hidden');
 
             try {
                 // The API endpoint for generating TTS
@@ -146,7 +181,8 @@
                                 prebuiltVoiceConfig: { voiceName: "Kore" }
                             }
                         }
-                    }
+                    },
+                    model: "gemini-2.5-flash-preview-tts"
                 };
                 const apiKey = "";
                 const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
@@ -156,88 +192,36 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
-
-                if (!response.ok) {
-                    throw new Error(`API error: ${response.status} ${response.statusText}`);
-                }
-
+                
                 const result = await response.json();
+                
                 const part = result?.candidates?.[0]?.content?.parts?.[0];
                 const audioData = part?.inlineData?.data;
+                const mimeType = part?.inlineData?.mimeType;
 
-                if (!audioData) {
-                    throw new Error('No audio data received from API.');
+                if (audioData && mimeType && mimeType.startsWith("audio/")) {
+                    const sampleRate = parseInt(mimeType.match(/rate=(\d+)/)[1], 10);
+                    const pcmData = base64ToArrayBuffer(audioData);
+                    const pcm16 = new Int16Array(pcmData);
+                    const wavBlob = pcmToWav(pcm16, sampleRate);
+                    const audioUrl = URL.createObjectURL(wavBlob);
+                    
+                    audioPlayer.src = audioUrl;
+                    audioPlayer.classList.remove('hidden');
+                    audioPlayer.play();
+
+                    showMessage('Audio generated and playing successfully!', false);
+                } else {
+                    throw new Error('No audio data or invalid format received from API.');
                 }
-                
-                // Directly create a Blob from the base64 string
-                const audioBlob = new Blob([Uint8Array.from(atob(audioData), c => c.charCodeAt(0))], { type: 'audio/mpeg' });
-                const audioUrl = URL.createObjectURL(audioBlob);
-
-                // Set the audio source and play
-                audio.src = audioUrl;
-
-                // Wait for audio metadata to load before playing
-                audio.addEventListener('loadedmetadata', () => {
-                    const duration = audio.duration;
-                    if (!isNaN(duration)) {
-                        totalTimeSpan.textContent = formatTime(duration);
-                        progressSlider.max = duration;
-                    }
-                    audio.play();
-                }, { once: true });
-
-                // Clear message box and enable controls
-                messageBox.classList.add('hidden');
-                generateAndPlayBtn.disabled = false;
-                pauseBtn.disabled = false;
-                playBtn.disabled = true;
-
             } catch (error) {
                 console.error('Error:', error);
                 showMessage(`Error: ${error.message}`, true);
+            } finally {
+                // Hide loading indicator and re-enable button
+                ttsLoadingMessage.classList.add('hidden');
                 generateAndPlayBtn.disabled = false;
-                pauseBtn.disabled = true;
-                playBtn.disabled = true;
             }
-        });
-        
-        // Pause button click handler
-        pauseBtn.addEventListener('click', () => {
-            if (!audio.paused) {
-                audio.pause();
-                pauseBtn.disabled = true;
-                playBtn.disabled = false;
-            }
-        });
-
-        // Play button click handler
-        playBtn.addEventListener('click', () => {
-            if (audio.paused) {
-                audio.play();
-                pauseBtn.disabled = false;
-                playBtn.disabled = true;
-            }
-        });
-        
-        // Update the progress slider and time display as the audio plays
-        audio.addEventListener('timeupdate', () => {
-            const currentTime = audio.currentTime;
-            progressSlider.value = currentTime;
-            currentTimeSpan.textContent = formatTime(currentTime);
-        });
-        
-        // Handle seeking with the slider
-        progressSlider.addEventListener('input', () => {
-            const newTime = progressSlider.value;
-            audio.currentTime = newTime;
-        });
-
-        // Reset controls when the audio ends
-        audio.addEventListener('ended', () => {
-            pauseBtn.disabled = true;
-            playBtn.disabled = true;
-            progressSlider.value = 0;
-            currentTimeSpan.textContent = "0:00";
         });
 
         // Event listeners for EPUB import
@@ -252,7 +236,8 @@
             loadingMessage.classList.remove('hidden');
             downloadPdfBtn.disabled = true;
             textInput.value = "Processing EPUB file...";
-            
+            messageBox.classList.add('hidden');
+
             try {
                 const fileReader = new FileReader();
                 fileReader.onload = async function(event) {
@@ -278,7 +263,8 @@
                             const manifestItem = manifest.querySelector(`item[id="${idref}"]`);
                             const href = manifestItem.getAttribute('href');
 
-                            const chapterPath = opfPath.substring(0, opfPath.lastIndexOf('/') + 1) + href;
+                            const opfDir = opfPath.substring(0, opfPath.lastIndexOf('/') + 1);
+                            const chapterPath = opfDir + href;
                             const chapterFile = zip.file(chapterPath);
 
                             if (chapterFile) {
