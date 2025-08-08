@@ -169,22 +169,23 @@
             messageBox.classList.add('hidden');
 
             try {
-                // Using the internal gemini-2.5-flash-preview-tts model
-                const apiKey = ""; // The Canvas environment will handle this
-                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
+                // Using the Google Cloud Text-to-Speech API as requested
+                // Note: The `apiKey` will be provided by the Canvas environment automatically.
+                const apiKey = "";
+                const apiUrl = `https://texttospeech.googleapis.com/v1/text:synthesize?key=${apiKey}`;
 
                 const payload = {
-                    contents: [{
-                        parts: [{ text: text }]
-                    }],
-                    generationConfig: {
-                        responseModalities: ["AUDIO"],
-                        speechConfig: {
-                            voiceConfig: {
-                                prebuiltVoiceConfig: { voiceName: "Kore" }
-                            }
-                        }
+                    input: {
+                        text: text
                     },
+                    voice: {
+                        languageCode: 'en-US',
+                        name: 'en-US-Wavenet-F' // A high-quality US English voice
+                    },
+                    audioConfig: {
+                        audioEncoding: 'LINEAR16', // Signed 16-bit PCM
+                        sampleRateHertz: 24000 // A common sample rate for speech
+                    }
                 };
 
                 let response;
@@ -224,15 +225,10 @@
 
                 const result = await response.json();
                 
-                const part = result?.candidates?.[0]?.content?.parts?.[0];
-                const audioData = part?.inlineData?.data;
-                const mimeType = part?.inlineData?.mimeType;
+                const audioData = result?.audioContent;
                 
-                if (audioData && mimeType && mimeType.startsWith("audio/")) {
-                    // The API returns L16 PCM audio data. We need to parse the sample rate from the mimeType.
-                    const sampleRateMatch = mimeType.match(/rate=(\d+)/);
-                    const sampleRate = sampleRateMatch ? parseInt(sampleRateMatch[1], 10) : 24000;
-                    
+                if (audioData) {
+                    const sampleRate = payload.audioConfig.sampleRateHertz; // Get sample rate from our payload
                     const pcmData = base64ToArrayBuffer(audioData);
                     const pcm16 = new Int16Array(pcmData);
                     const wavBlob = pcmToWav(pcm16, sampleRate);
