@@ -1,0 +1,12 @@
+{
+  "name": "text-to-voice",
+  "version": "1.0.0",
+  "description": "A text-to-voice web application using the Gemini API.",
+  "scripts": {
+    "start": "vercel dev"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "vercel": "^34.0.0"
+  }
+}
